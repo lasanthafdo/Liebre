@@ -83,7 +83,7 @@ public class TimeBasedSingleWindowAggregate<IN extends RichTuple, OUT extends Ri
                 // Remove contribution of stale tuples from stale windows
                 while (tuples.size() > 0) {
                     IN tuple = tuples.peek();
-                    if (tuple.getTimestamp() < earliestWinStartTS + WA) {
+                    if (tuple != null && tuple.getTimestamp() < earliestWinStartTS + WA) {
                         windows.get(earliestWinStartTS).get(tuple.getKey()).remove(tuple);
                         windowsCounters.get(earliestWinStartTS).get(tuple.getKey()).add(-1);
                         if (windowsCounters.get(earliestWinStartTS).get(tuple.getKey()).isZero()) {
