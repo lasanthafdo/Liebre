@@ -7,6 +7,10 @@ import org.apache.logging.log4j.Logger;
 import query.LiebreContext;
 import stream.Stream;
 
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.atomic.LongAdder;
+
 public abstract class AbstractComponent<IN, OUT> implements Component {
 
   private static final Logger LOG = LogManager.getLogger();
@@ -21,11 +25,12 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   private static final long MILLIS_TO_NANOS = 1000000;
   // The actual alpha that we use, changing depending on the actual update period length
   private volatile double alpha = 0.2;
-  private volatile long tuplesWritten;
-  private volatile long tuplesRead;
-  private volatile long processingTimeNanos;
+  private final LongAdder tuplesWritten = new LongAdder();
+  private final LongAdder tuplesRead = new LongAdder();
+  private final LongAdder processingTimeNanos = new LongAdder();
   private volatile long lastUpdateTime = System.currentTimeMillis();
   private volatile double selectivity = 1;
+  private final Set<Integer> replicaSet = new HashSet<>();
 
   private volatile double cost = 1;
   private volatile double rate = 0;
@@ -44,8 +49,8 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   @Override
   public boolean runFor(int rounds) {
     int executions = 0;
-    long tuplesWrittenBefore = tuplesWritten;
-    long tuplesReadBefore = tuplesRead;
+    long tuplesWrittenBefore = tuplesWritten.longValue();
+    long tuplesReadBefore = tuplesRead.longValue();
     long startTime = System.nanoTime();
     // Process while the component is enabled, the rounds are not finished and there is actually
     // processing happening at every execution
@@ -55,8 +60,8 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     }
     long endTime = System.nanoTime();
     // Update processing time
-    processingTimeNanos += (endTime - startTime);
-    return tuplesReadBefore != tuplesRead || tuplesWrittenBefore != tuplesWritten;
+    processingTimeNanos.add(endTime - startTime);
+    return tuplesReadBefore != tuplesRead.longValue() || tuplesWrittenBefore != tuplesWritten.longValue();
   }
 
   @Override
@@ -71,12 +76,12 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   protected abstract void process();
 
   protected final void increaseTuplesRead() {
-    tuplesRead++;
+    tuplesRead.increment();
     rateMetric.record(1);
   }
 
   protected final void increaseTuplesWritten() {
-    tuplesWritten++;
+    tuplesWritten.increment();
   }
 
   /**
@@ -93,14 +98,29 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   }
 
   private void updateCostAndSelectivity() {
-    if (tuplesRead == 0 || processingTimeNanos == 0) {
+    if (tuplesRead.longValue() == 0 || processingTimeNanos.longValue() == 0) {
       return;
     }
-    final double currentSelectivity = tuplesWritten / (double) tuplesRead;
-    final double currentCost = processingTimeNanos / (double) tuplesRead;
+    double effectiveProcessingTimeNanos = processingTimeNanos.longValue() / (double) replicaSet.size();
+    final double currentSelectivity = tuplesWritten.longValue() / (double) tuplesRead.longValue();
+    final double currentCost = effectiveProcessingTimeNanos / (double) tuplesRead.longValue();
     this.selectivity = movingAverage(currentSelectivity, selectivity);
     this.cost = movingAverage(currentCost, cost);
-    this.tuplesRead = this.tuplesWritten = this.processingTimeNanos = 0;
+    this.tuplesRead.reset();
+    this.tuplesWritten.reset();
+    this.processingTimeNanos.reset();
+  }
+
+  @Override
+  public synchronized void updateMetricsForReplica(int replicaIndex, long tuplesRead, long tuplesWritten, long processingTimeNanos) {
+    if(replicaSet.contains(replicaIndex)) {
+      updateMetrics();
+      replicaSet.clear();
+    }
+    replicaSet.add(replicaIndex);
+    this.tuplesRead.add(tuplesRead);
+    this.tuplesWritten.add(tuplesWritten);
+    this.processingTimeNanos.add(processingTimeNanos);
   }
 
   private void updateRateAndAlpha() {
@@ -111,7 +131,7 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     }
     // Update alpha value
     this.alpha = Math.min(TARGET_ALPHA, TARGET_ALPHA * updatePeriod / TARGET_UPDATE_PERIOD);
-    final double currentRate = tuplesRead / (double) (MILLIS_TO_NANOS * updatePeriod);
+    final double currentRate = tuplesRead.doubleValue() / (double) (MILLIS_TO_NANOS * updatePeriod);
     this.rate = movingAverage(currentRate, rate);
     this.lastUpdateTime = currentTime;
   }
@@ -192,5 +212,20 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   @Override
   public String toString() {
     return getId();
+  }
+
+  @Override
+  public long getTuplesRead() {
+    return tuplesRead.longValue();
+  }
+
+  @Override
+  public long getTuplesWritten() {
+    return tuplesWritten.longValue();
+  }
+
+  @Override
+  public long getProcessingTimeNanos() {
+    return processingTimeNanos.longValue();
   }
 }

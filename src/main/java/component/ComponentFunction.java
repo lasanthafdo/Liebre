@@ -2,7 +2,9 @@ package component;
 
 import common.Active;
 
-public interface ComponentFunction extends Active {
+import java.io.Serializable;
+
+public interface ComponentFunction extends Active, Serializable {
 
   default boolean canRun() {
     return true;

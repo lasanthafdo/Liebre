@@ -24,6 +24,8 @@ package component;
 
 import common.Active;
 import common.Named;
+
+import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
 import io.palyvos.haren.Feature;
@@ -39,7 +41,7 @@ import scheduling.haren.HarenFeatureTranslator;
  * @see Named
  * @see ConnectionsNumber
  */
-public interface Component extends Active, Runnable, Named, Task {
+public interface Component extends Active, Runnable, Named, Task, Serializable {
 
   /**
    * The input {@link ConnectionsNumber} of this component. Used to enforce invariants during
@@ -75,6 +77,12 @@ public interface Component extends Active, Runnable, Named, Task {
    return 0;
   }
 
+  long getTuplesRead();
+
+  long getTuplesWritten();
+
+  long getProcessingTimeNanos();
+
   /**
    * Update the metrics  (e.g. cost and selectivity) based on the execution statistics of the
    * operator.
@@ -86,6 +94,8 @@ public interface Component extends Active, Runnable, Named, Task {
    * from another thread while the operator is stopped. The results are visible to all threads.</b>
    */
   void updateMetrics();
+
+  void updateMetricsForReplica(int replicaIndex, long tuplesRead, long tuplesWritten, long processingTimeNanos);
 
   ComponentType getType();
 

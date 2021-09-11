@@ -65,6 +65,21 @@ class SecondInputOperator2InAdapter<IN, OUT> implements
   }
 
   @Override
+  public long getTuplesRead() {
+    return decorated.getTuplesRead();
+  }
+
+  @Override
+  public long getTuplesWritten() {
+    return decorated.getTuplesWritten();
+  }
+
+  @Override
+  public long getProcessingTimeNanos() {
+    return decorated.getProcessingTimeNanos();
+  }
+
+  @Override
   public Collection<? extends Stream<OUT>> getOutputs() {
     return decorated.getOutputs();
   }
@@ -122,6 +137,11 @@ class SecondInputOperator2InAdapter<IN, OUT> implements
   @Override
   public void updateMetrics() {
     decorated.updateMetrics();
+  }
+
+  @Override
+  public void updateMetricsForReplica(int replicaIndex, long tuplesRead, long tuplesWritten, long processingTimeNanos) {
+    decorated.updateMetricsForReplica(0, tuplesRead, tuplesWritten, processingTimeNanos);
   }
 
   @Override

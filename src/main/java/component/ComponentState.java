@@ -22,6 +22,7 @@
  */
 package component;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,14 +40,14 @@ import stream.Stream;
  * @param <OUT> The type of the outputs of the component where the state belongs to.
  * @author palivosd
  */
-public final class ComponentState<IN, OUT> {
+public final class ComponentState<IN, OUT> implements Serializable {
 
   private static AtomicInteger nextIndex = new AtomicInteger();
   private final ComponentType type;
   private final String id;
   private final int index;
-  private final List<Stream<IN>> inputs = new ArrayList<>();
-  private final List<Stream<OUT>> outputs = new ArrayList<>();
+  private transient List<Stream<IN>> inputs = new ArrayList<>();
+  private transient List<Stream<OUT>> outputs = new ArrayList<>();
 
   private volatile boolean enabled = false;
 
@@ -62,6 +63,11 @@ public final class ComponentState<IN, OUT> {
     this.id = id;
     this.type = type;
     this.index = nextIndex.getAndIncrement();
+  }
+
+  public void initialize() {
+    inputs = new ArrayList<>();
+    outputs = new ArrayList<>();
   }
 
   public ComponentType getType() {
