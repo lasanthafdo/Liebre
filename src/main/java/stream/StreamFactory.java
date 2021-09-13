@@ -23,6 +23,7 @@
 
 package stream;
 
+import common.tuple.RichTuple;
 import component.StreamConsumer;
 import component.StreamProducer;
 import common.util.backoff.Backoff;
@@ -35,8 +36,15 @@ public interface StreamFactory {
   <T> Stream<T> newStream(
       StreamProducer<T> from, StreamConsumer<T> to, int capacity, Backoff backoff);
 
+  <T extends RichTuple> Stream<T> newPriorityBasedStream(
+      StreamProducer<T> from, StreamConsumer<T> to, int capacity, Backoff backoff);
+
   default <T> Stream<T> newStream(StreamProducer<T> from, StreamConsumer<T> to, int capacity) {
     return newStream(from, to, capacity, InactiveBackoff.INSTANCE);
+  }
+
+  default <T extends RichTuple> Stream<T> newPriorityBasedStream(StreamProducer<T> from, StreamConsumer<T> to, int capacity) {
+    return newPriorityBasedStream(from, to, capacity, InactiveBackoff.INSTANCE);
   }
 
   <T extends Comparable<? super T>> MWMRStream<T> newMWMRStream(

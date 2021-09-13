@@ -90,6 +90,11 @@ public abstract class AbstractSink<IN> extends AbstractComponent<IN, Void> imple
   }
 
   @Override
+  public Collection<? extends Stream<IN>> getHighPriorityInputs() {
+    return state.getHighPriorityInputs();
+  }
+
+  @Override
   public boolean canRun() {
     return getInput().size() > 0;
   }

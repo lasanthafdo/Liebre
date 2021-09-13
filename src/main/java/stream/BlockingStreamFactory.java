@@ -1,5 +1,6 @@
 package stream;
 
+import common.tuple.RichTuple;
 import component.StreamConsumer;
 import component.StreamProducer;
 import common.util.backoff.Backoff;
@@ -20,6 +21,12 @@ public class BlockingStreamFactory implements StreamFactory {
     return new BlockingStream<>(getStreamId(from, to),
         indexes.getAndIncrement(),
         from, to, capacity);
+  }
+
+  @Override
+  public <T extends RichTuple> Stream<T> newPriorityBasedStream(StreamProducer<T> from, StreamConsumer<T> to,
+                                                                int capacity, Backoff backoff) {
+    throw new UnsupportedOperationException("Priority based streams are not supported for class " + getClass().getCanonicalName());
   }
 
   @Override

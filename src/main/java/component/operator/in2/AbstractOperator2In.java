@@ -60,8 +60,18 @@ public abstract class AbstractOperator2In<IN, IN2, OUT> extends AbstractComponen
   }
 
   @Override
+  public Collection<? extends Stream<OUT>> getHighPriorityOutputs() {
+    return state.getHighPriorityOutputs();
+  }
+
+  @Override
   public Collection<? extends Stream<?>> getInputs() {
     return state.getInputs();
+  }
+
+  @Override
+  public Collection<? extends Stream<?>> getHighPriorityInputs() {
+    return state.getHighPriorityInputs();
   }
 
   @Override

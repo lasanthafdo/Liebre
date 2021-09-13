@@ -394,6 +394,22 @@ public final class Query {
     return this;
   }
 
+  public synchronized <RT extends RichTuple> Query connectWithPriority(StreamProducer<RT> producer, StreamConsumer<RT> consumer) {
+    return connectWithPriority(producer, consumer, defaultBackoff);
+  }
+
+  public synchronized <RT extends RichTuple> Query connectWithPriority(
+      StreamProducer<RT> producer, StreamConsumer<RT> consumer, Backoff backoff) {
+    Validate.isTrue(
+        consumer instanceof Operator2In == false,
+        "Error when connecting '%s': Please use connect2inXX() for Operator2In and subclasses!",
+        consumer.getId());
+    Stream<RT> stream = getPriorityBasedStream(producer, consumer, backoff);
+    producer.addOutput(stream);
+    consumer.addInput(stream);
+    return this;
+  }
+
   public synchronized <T extends RichTuple> Query connectKeyBy(
           StreamProducer<T> producer, List<? extends StreamConsumer<T>> consumers) {
 
@@ -469,6 +485,13 @@ public final class Query {
       StreamProducer<T> producer, StreamConsumer<T> consumer, Backoff backoff) {
     Stream<T> stream =
         streamFactory.newStream(producer, consumer, DEFAULT_STREAM_CAPACITY, backoff);
+    return stream;
+  }
+
+  private synchronized <RT extends RichTuple> Stream<RT> getPriorityBasedStream(
+      StreamProducer<RT> producer, StreamConsumer<RT> consumer, Backoff backoff) {
+    Stream<RT> stream =
+        streamFactory.newPriorityBasedStream(producer, consumer, DEFAULT_STREAM_CAPACITY, backoff);
     return stream;
   }
 

@@ -49,6 +49,10 @@ public interface Stream<T> extends Active, Named {
 
   int size();
 
+  default int getHighPrioritySize() {
+    return 0;
+  }
+
   List<? extends StreamProducer<T>> producers();
 
   List<? extends StreamConsumer<T>> consumers();

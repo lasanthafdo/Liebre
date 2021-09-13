@@ -66,6 +66,8 @@ public interface StreamConsumer<IN> extends Named, Component {
    */
   <T> Collection<? extends Stream<T>> getInputs();
 
+  <T> Collection<? extends Stream<T>> getHighPriorityInputs();
+
   @Override
   default int getTopologicalOrder() {
     int maxUpstreamOrder = 0;
@@ -142,4 +144,12 @@ public interface StreamConsumer<IN> extends Named, Component {
     return size;
   }
 
+  @Override
+  default long getHighPriorityInputQueueSize() {
+    long size = 0;
+    for (Stream<?> input : getHighPriorityInputs()) {
+      size += input.getHighPrioritySize();
+    }
+    return size;
+  }
 }

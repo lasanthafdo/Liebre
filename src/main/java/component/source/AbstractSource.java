@@ -83,6 +83,11 @@ public abstract class AbstractSource<OUT> extends component.AbstractComponent<Vo
     return state.getOutputs();
   }
 
+  @Override
+  public Collection<? extends Stream<OUT>> getHighPriorityOutputs() {
+    return state.getHighPriorityOutputs();
+  }
+
   public boolean canRun() {
     return getOutput().remainingCapacity() > 0;
   }

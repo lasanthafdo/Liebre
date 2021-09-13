@@ -81,6 +81,16 @@ public abstract class AbstractOperator<IN, OUT> extends AbstractComponent<IN, OU
   }
 
   @Override
+  public Collection<? extends Stream<IN>> getHighPriorityInputs() {
+    return state.getHighPriorityInputs();
+  }
+
+  @Override
+  public Collection<? extends Stream<OUT>> getHighPriorityOutputs() {
+    return state.getHighPriorityOutputs();
+  }
+
+  @Override
   public boolean canRun() {
     return getInput().size() > 0 && getOutput().remainingCapacity() > 0;
   }

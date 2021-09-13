@@ -48,6 +48,8 @@ public final class ComponentState<IN, OUT> implements Serializable {
   private final int index;
   private transient List<Stream<IN>> inputs = new ArrayList<>();
   private transient List<Stream<OUT>> outputs = new ArrayList<>();
+  private transient List<Stream<IN>> highPriorityInputs = new ArrayList<>();
+  private transient List<Stream<OUT>> highPriorityOutputs = new ArrayList<>();
 
   private volatile boolean enabled = false;
 
@@ -68,6 +70,8 @@ public final class ComponentState<IN, OUT> implements Serializable {
   public void initialize() {
     inputs = new ArrayList<>();
     outputs = new ArrayList<>();
+    highPriorityInputs = new ArrayList<>();
+    highPriorityOutputs = new ArrayList<>();
   }
 
   public ComponentType getType() {
@@ -76,20 +80,24 @@ public final class ComponentState<IN, OUT> implements Serializable {
 
   public void addOutput(int index, Stream<OUT> stream) {
     outputs.add(index, stream);
+    highPriorityOutputs.add(index, stream);
   }
 
   public void addOutput(Stream<OUT> stream) {
     Validate.validState(type.outputsNumber().isMultiple());
     outputs.add(stream);
+    highPriorityOutputs.add(stream);
   }
 
   public void addInput(int index, Stream<IN> stream) {
     inputs.add(index, stream);
+    highPriorityInputs.add(index, stream);
   }
 
   public void addInput(Stream<IN> stream) {
     Validate.validState(type.inputsNumber().isMultiple());
     inputs.add(stream);
+    highPriorityInputs.add(stream);
   }
 
   /**
@@ -189,6 +197,14 @@ public final class ComponentState<IN, OUT> implements Serializable {
    */
   public Collection<Stream<OUT>> getOutputs() {
     return Collections.unmodifiableCollection(outputs);
+  }
+
+  public Collection<Stream<IN>> getHighPriorityInputs() {
+    return Collections.unmodifiableCollection(highPriorityInputs);
+  }
+
+  public Collection<Stream<OUT>> getHighPriorityOutputs() {
+    return Collections.unmodifiableCollection(highPriorityOutputs);
   }
 
   /**

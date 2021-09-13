@@ -85,8 +85,18 @@ class SecondInputOperator2InAdapter<IN, OUT> implements
   }
 
   @Override
+  public Collection<? extends Stream<OUT>> getHighPriorityOutputs() {
+    return decorated.getHighPriorityOutputs();
+  }
+
+  @Override
   public Collection<? extends Stream<?>> getInputs() {
     return decorated.getInputs();
+  }
+
+  @Override
+  public <T> Collection<? extends Stream<T>> getHighPriorityInputs() {
+    return decorated.getHighPriorityInputs();
   }
 
   @Override

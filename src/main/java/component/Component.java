@@ -72,9 +72,17 @@ public interface Component extends Active, Runnable, Named, Task, Serializable {
     return HarenFeatureTranslator.MAX_QUEUE_SIZE;
   }
 
+  default long getHighPriorityInputQueueSize() {
+    return 0;
+  }
+
   default long getOutputQueueSize() {
     // Sinks can always run
    return 0;
+  }
+
+  default long getHighPriorityOutputQueueSize() {
+    return 0;
   }
 
   long getTuplesRead();

@@ -62,6 +62,8 @@ public interface StreamProducer<OUT> extends Named, Component {
    */
   Collection<? extends Stream<OUT>> getOutputs();
 
+  Collection<? extends Stream<OUT>> getHighPriorityOutputs();
+
   @Override
   default List<Component> getDownstream() {
     List<Component> downstream = new ArrayList<>();
@@ -82,4 +84,12 @@ public interface StreamProducer<OUT> extends Named, Component {
     return size;
   }
 
+  @Override
+  default long getHighPriorityOutputQueueSize() {
+    long size = 0;
+    for (Stream<?> output : getHighPriorityOutputs()) {
+      size += output.getHighPrioritySize();
+    }
+    return size;
+  }
 }
