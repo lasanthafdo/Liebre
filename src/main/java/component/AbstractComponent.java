@@ -9,6 +9,7 @@ import stream.Stream;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.LongAdder;
 
 public abstract class AbstractComponent<IN, OUT> implements Component {
@@ -30,7 +31,7 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   private final LongAdder processingTimeNanos = new LongAdder();
   private volatile long lastUpdateTime = System.currentTimeMillis();
   private volatile double selectivity = 1;
-  private final Set<Integer> replicaSet = new HashSet<>();
+  private final Set<Integer> replicaSet = ConcurrentHashMap.newKeySet();
 
   private volatile double cost = 1;
   private volatile double rate = 0;
