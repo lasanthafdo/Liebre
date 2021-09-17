@@ -8,7 +8,7 @@ import component.StreamProducer;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class PriorityBasedBackoffStreamFactory implements StreamFactory {
+public class PriorityBasedStreamFactory implements StreamFactory {
 
 	private final AtomicInteger indexes = new AtomicInteger();
 
@@ -23,8 +23,8 @@ public class PriorityBasedBackoffStreamFactory implements StreamFactory {
 	public <RT extends RichTuple> Stream<RT> newPriorityBasedStream(StreamProducer<RT> from,
 																	StreamConsumer<RT> to,
 																	int capacity, Backoff backoff) {
-		return new PriorityBasedBackoffStream<>(
-			getStreamId(from, to), indexes.getAndIncrement(), from, to, capacity, backoff);
+		return new PriorityBasedStream<>(
+			getStreamId(from, to), indexes.getAndIncrement(), from, to, capacity);
 	}
 
 	@Override

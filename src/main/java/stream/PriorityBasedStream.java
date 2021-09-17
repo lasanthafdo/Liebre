@@ -33,9 +33,11 @@ import component.StreamProducer;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Stream implementation that has an (optional) approximate capacity that is enforced by an optional
@@ -47,18 +49,20 @@ import java.util.concurrent.LinkedBlockingQueue;
  * @see ExponentialBackoff
  * @see InactiveBackoff
  */
-public class PriorityBasedBackoffStream<T extends RichTuple> extends AbstractStream<T> {
+public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> {
 
-  private static final double EMA_ALPHA = 0.5;
-  private final Queue<T> stream = new LinkedBlockingQueue<>();
-  private final Queue<T> highPriorityStream = new LinkedBlockingQueue<>();
+  private final Queue<T> stream = new ConcurrentLinkedQueue<>();
+  private final Queue<T> highPriorityStream = new ConcurrentLinkedQueue<>();
   private final int capacity;
   private final StreamProducer<T> source;
   private final StreamConsumer<T> destination;
-  private final Backoff readBackoff;
-  private final Backoff writeBackoff;
   private volatile boolean isFlushed = false;
   private volatile double averageArrivalTime = -1;
+  private final AtomicLong tuplesRead = new AtomicLong(0);
+  private final AtomicLong tuplesWritten = new AtomicLong(0);
+  private final AtomicLong highPriorityTuplesRead = new AtomicLong(0);
+  private final AtomicLong highPriorityTuplesWritten = new AtomicLong(0);
+
   private long lastWatermark;
 
   /**
@@ -69,30 +73,22 @@ public class PriorityBasedBackoffStream<T extends RichTuple> extends AbstractStr
    * @param destination The consumer
    * @param capacity The capacity that the stream will try to enforce with the {@link Backoff}
 *     strategy.
-   * @param backoff The backoff strategy.
    */
-  PriorityBasedBackoffStream(
+  PriorityBasedStream(
       String id,
       int index,
       StreamProducer<T> source,
       StreamConsumer<T> destination,
-      int capacity,
-      Backoff backoff) {
+      int capacity) {
     super(id, index);
     this.capacity = capacity;
     this.source = source;
     this.destination = destination;
-    this.readBackoff = backoff.newInstance();
-    this.writeBackoff = backoff.newInstance();
   }
 
   @Override
   public void doAddTuple(T tuple, int producerIndex) {
-    if (offer(tuple, producerIndex)) {
-      writeBackoff.relax();
-      return;
-    }
-    writeBackoff.backoff();
+    offer(tuple, producerIndex);
   }
 
   @Override
@@ -105,19 +101,15 @@ public class PriorityBasedBackoffStream<T extends RichTuple> extends AbstractStr
       }
       if(wbrTuple.getTimestamp() <= lastWatermark) {
         highPriorityStream.offer(tuple);
+        highPriorityTuplesWritten.incrementAndGet();
       } else {
         stream.offer(tuple);
       }
     } else {
       stream.offer(tuple);
     }
-    // FIXME: This should only run when scheduling is enabled!!
-    long arrivalTime = tuple.getStimulus();
-    averageArrivalTime =
-        averageArrivalTime < 0
-            ? arrivalTime
-            : ((EMA_ALPHA * arrivalTime) + ((1 - EMA_ALPHA) * averageArrivalTime));
-    return remainingCapacity() > 0;
+    tuplesWritten.incrementAndGet();
+    return true;
   }
 
   private void extractHighPriorityEvents() {
@@ -129,13 +121,13 @@ public class PriorityBasedBackoffStream<T extends RichTuple> extends AbstractStr
     T tuple = highPriorityStream.poll();
     if(tuple == null) {
       tuple = stream.poll();
+    } else {
+      highPriorityTuplesRead.incrementAndGet();
     }
-    if (tuple != null) {
-      readBackoff.relax();
-      return tuple;
+    if(tuple != null) {
+      tuplesRead.incrementAndGet();
     }
-    readBackoff.backoff();
-    return null;
+    return tuple;
   }
 
   @Override
@@ -160,14 +152,12 @@ public class PriorityBasedBackoffStream<T extends RichTuple> extends AbstractStr
 
   @Override
   public List<? extends StreamProducer<T>> producers() {
-		//FIXME: Optimize
-		return Arrays.asList(source);
+    return Collections.singletonList(source);
   }
 
   @Override
   public List<? extends StreamConsumer<T>> consumers() {
-    // FIXME: Optimize
-    return Arrays.asList(destination);
+    return Collections.singletonList(destination);
   }
 
   @Override
