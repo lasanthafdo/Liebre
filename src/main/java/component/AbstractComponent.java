@@ -7,34 +7,37 @@ import org.apache.logging.log4j.Logger;
 import query.LiebreContext;
 import stream.Stream;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 
 public abstract class AbstractComponent<IN, OUT> implements Component {
 
   private static final Logger LOG = LogManager.getLogger();
+
   protected final ComponentState<IN, OUT> state;
 
   // Exponential moving average alpha parameter
   // for cost and selectivity moving averages
   // The ALPHA we want to use for EMAs
-  private static final double TARGET_ALPHA = 0.3;
+  private static final double TARGET_ALPHA = 0.5;
   // The update period that the target alpha would be applied to, in millis
   private static final long TARGET_UPDATE_PERIOD = 1000;
   private static final long MILLIS_TO_NANOS = 1000000;
   // The actual alpha that we use, changing depending on the actual update period length
-  private volatile double alpha = 0.2;
+  private volatile double alpha = 0.3;
   private final LongAdder tuplesWritten = new LongAdder();
   private final LongAdder tuplesRead = new LongAdder();
-  private final LongAdder processingTimeNanos = new LongAdder();
+  private final AtomicLong processingTimeNanos = new AtomicLong(0);
   private volatile long lastUpdateTime = System.currentTimeMillis();
-  private volatile double selectivity = 1;
+  private volatile long lastReplicaUpdateTime = System.currentTimeMillis();
+  private final AtomicReference<Double> selectivity = new AtomicReference<>(1D);
   private final Set<Integer> replicaSet = ConcurrentHashMap.newKeySet();
 
-  private volatile double cost = 1;
-  private volatile double rate = 0;
+  private final AtomicReference<Double> cost = new AtomicReference<>(0D);
+  private final AtomicReference<Double> rate = new AtomicReference<>(0D);
 
   private final TimeMetric executionTimeMetric;
   private final Metric rateMetric;
@@ -61,7 +64,7 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     }
     long endTime = System.nanoTime();
     // Update processing time
-    processingTimeNanos.add(endTime - startTime);
+    processingTimeNanos.addAndGet(endTime - startTime);
     return tuplesReadBefore != tuplesRead.longValue() || tuplesWrittenBefore != tuplesWritten.longValue();
   }
 
@@ -99,29 +102,30 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   }
 
   private void updateCostAndSelectivity() {
-    if (tuplesRead.longValue() == 0 || processingTimeNanos.longValue() == 0) {
+    if (tuplesRead.longValue() == 0 || processingTimeNanos.longValue() == 0 || replicaSet.size() == 0) {
       return;
     }
-    double effectiveProcessingTimeNanos = processingTimeNanos.longValue() / (double) replicaSet.size();
     final double currentSelectivity = tuplesWritten.longValue() / (double) tuplesRead.longValue();
-    final double currentCost = effectiveProcessingTimeNanos / (double) tuplesRead.longValue();
-    this.selectivity = movingAverage(currentSelectivity, selectivity);
-    this.cost = movingAverage(currentCost, cost);
+    final double currentCost = processingTimeNanos.longValue() / (double) tuplesRead.longValue();
+    this.selectivity.set(movingAverage(currentSelectivity, selectivity.get()));
+    this.cost.set(movingAverage(currentCost, cost.get()));
     this.tuplesRead.reset();
     this.tuplesWritten.reset();
-    this.processingTimeNanos.reset();
+    this.processingTimeNanos.set(0);
   }
 
   @Override
   public synchronized void updateMetricsForReplica(int replicaIndex, long tuplesRead, long tuplesWritten, long processingTimeNanos) {
     if(replicaSet.contains(replicaIndex)) {
+      this.lastUpdateTime += (System.currentTimeMillis() - this.lastReplicaUpdateTime);
       updateMetrics();
       replicaSet.clear();
     }
     replicaSet.add(replicaIndex);
     this.tuplesRead.add(tuplesRead);
     this.tuplesWritten.add(tuplesWritten);
-    this.processingTimeNanos.add(processingTimeNanos);
+    this.processingTimeNanos.set(Math.max(processingTimeNanos, this.processingTimeNanos.get()));
+    this.lastReplicaUpdateTime = System.currentTimeMillis();
   }
 
   private void updateRateAndAlpha() {
@@ -132,8 +136,8 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     }
     // Update alpha value
     this.alpha = Math.min(TARGET_ALPHA, TARGET_ALPHA * updatePeriod / TARGET_UPDATE_PERIOD);
-    final double currentRate = tuplesRead.doubleValue() / (double) (MILLIS_TO_NANOS * updatePeriod);
-    this.rate = movingAverage(currentRate, rate);
+    final double currentRate = (double) tuplesRead.longValue() / (MILLIS_TO_NANOS * updatePeriod);
+    this.rate.set(movingAverage(currentRate, rate.get()));
     this.lastUpdateTime = currentTime;
   }
 
@@ -143,17 +147,17 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
 
   @Override
   public final double getSelectivity() {
-    return selectivity;
+    return selectivity.get();
   }
 
   @Override
   public final double getCost() {
-    return cost;
+    return cost.get();
   }
 
   @Override
   public final double getRate() {
-    return rate;
+    return rate.get();
   }
 
   public ComponentType getType() {
@@ -229,4 +233,5 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   public long getProcessingTimeNanos() {
     return processingTimeNanos.longValue();
   }
+
 }

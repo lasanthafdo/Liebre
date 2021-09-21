@@ -63,4 +63,7 @@ public interface LiebreScheduler<T extends Runnable> extends Active {
   /** Stop the running tasks. */
   void stopTasks();
 
+  default void scheduleTasks() {
+
+  }
 }

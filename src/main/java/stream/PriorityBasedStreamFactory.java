@@ -2,8 +2,10 @@ package stream;
 
 import common.tuple.RichTuple;
 import common.util.backoff.Backoff;
+import component.Component;
 import component.StreamConsumer;
 import component.StreamProducer;
+import scheduling.LiebreScheduler;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -11,6 +13,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class PriorityBasedStreamFactory implements StreamFactory {
 
 	private final AtomicInteger indexes = new AtomicInteger();
+	private final LiebreScheduler scheduler;
+
+	public PriorityBasedStreamFactory(LiebreScheduler scheduler) {
+		this.scheduler = scheduler;
+	}
 
 	@Override
 	public <T> Stream<T> newStream(StreamProducer<T> from,
@@ -24,7 +31,7 @@ public class PriorityBasedStreamFactory implements StreamFactory {
 																	StreamConsumer<RT> to,
 																	int capacity, Backoff backoff) {
 		return new PriorityBasedStream<>(
-			getStreamId(from, to), indexes.getAndIncrement(), from, to, capacity);
+			getStreamId(from, to), indexes.getAndIncrement(), from, to, capacity, scheduler);
 	}
 
 	@Override

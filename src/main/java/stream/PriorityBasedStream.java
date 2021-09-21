@@ -31,8 +31,8 @@ import common.util.backoff.InactiveBackoff;
 import component.StreamConsumer;
 import component.StreamProducer;
 import org.apache.commons.lang3.builder.ToStringBuilder;
+import scheduling.LiebreScheduler;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Queue;
@@ -62,8 +62,12 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
   private final AtomicLong tuplesWritten = new AtomicLong(0);
   private final AtomicLong highPriorityTuplesRead = new AtomicLong(0);
   private final AtomicLong highPriorityTuplesWritten = new AtomicLong(0);
+  private final LiebreScheduler scheduler;
 
+  private int lastStreamSize = 0;
+  private int lastHighPriorityStreamSize = 0;
   private long lastWatermark;
+  private final double alpha = 0.4;
 
   /**
    * Construct.
@@ -79,11 +83,13 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
       int index,
       StreamProducer<T> source,
       StreamConsumer<T> destination,
-      int capacity) {
+      int capacity,
+      LiebreScheduler scheduler) {
     super(id, index);
     this.capacity = capacity;
     this.source = source;
     this.destination = destination;
+    this.scheduler = scheduler;
   }
 
   @Override
@@ -98,6 +104,7 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
       if(wbrTuple.isWatermark() && wbrTuple.getTimestamp() > lastWatermark) {
         this.lastWatermark = wbrTuple.getTimestamp();
         extractHighPriorityEvents();
+        scheduler.scheduleTasks();
       }
       if(wbrTuple.getTimestamp() <= lastWatermark) {
         highPriorityStream.offer(tuple);
@@ -142,12 +149,17 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
 
   @Override
   public final int size() {
-    return stream.size();
+    int streamSize =
+        (int) Math.round(movingAverage(stream.size() + getHighPrioritySize(), lastStreamSize));
+    lastStreamSize = streamSize;
+    return streamSize;
   }
 
   @Override
   public int getHighPrioritySize() {
-    return highPriorityStream.size();
+    int highPriorityStreamSize = (int) Math.round(movingAverage(highPriorityStream.size(), lastHighPriorityStreamSize));
+    lastHighPriorityStreamSize = highPriorityStreamSize;
+    return highPriorityStreamSize;
   }
 
   @Override
@@ -203,4 +215,7 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
         .toString();
   }
 
+  private double movingAverage(double newValue, double oldValue) {
+    return (alpha * newValue) + ((1 - alpha) * oldValue);
+  }
 }
