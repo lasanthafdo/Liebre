@@ -67,7 +67,7 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
   private int lastStreamSize = 0;
   private int lastHighPriorityStreamSize = 0;
   private long lastWatermark;
-  private final double alpha = 0.4;
+  private final double alpha = 0.5;
 
   /**
    * Construct.

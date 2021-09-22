@@ -22,12 +22,12 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   // Exponential moving average alpha parameter
   // for cost and selectivity moving averages
   // The ALPHA we want to use for EMAs
-  private static final double TARGET_ALPHA = 0.5;
+  private static final double TARGET_ALPHA = 0.6;
   // The update period that the target alpha would be applied to, in millis
   private static final long TARGET_UPDATE_PERIOD = 1000;
   private static final long MILLIS_TO_NANOS = 1000000;
   // The actual alpha that we use, changing depending on the actual update period length
-  private volatile double alpha = 0.3;
+  private volatile double alpha = 0.4;
   private final LongAdder tuplesWritten = new LongAdder();
   private final LongAdder tuplesRead = new LongAdder();
   private final AtomicLong processingTimeNanos = new AtomicLong(0);
