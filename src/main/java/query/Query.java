@@ -290,6 +290,11 @@ public final class Query {
     return router;
   }
 
+  public synchronized <T> RouterOperator<T> addRouterOperator(RouterOperator<T> router) {
+    saveComponent(operators, router, OPERATOR);
+    return router;
+  }
+
   public synchronized <T> List<RouterOperator<T>> addRouterOperator(String identifier,int parallelism) {
     assert (parallelism >= 1);
     List<RouterOperator<T>> result = new LinkedList<>();
@@ -468,6 +473,19 @@ public final class Query {
     return this;
   }
 
+  public synchronized <RT extends RichTuple> Query connect2inLeftWithPriority(
+      StreamProducer<RT> producer, Operator2In<RT, ?, ?> consumer) {
+    return connect2inLeftWithPriority(producer, consumer, defaultBackoff);
+  }
+
+  public synchronized <RT extends RichTuple> Query connect2inLeftWithPriority(
+      StreamProducer<RT> producer, Operator2In<RT, ?, ?> consumer, Backoff backoff) {
+    Stream<RT> stream = getPriorityBasedStream(producer, consumer, backoff);
+    producer.addOutput(stream);
+    consumer.addInput(stream);
+    return this;
+  }
+
   public synchronized <T> Query connect2inRight(
       StreamProducer<T> producer, Operator2In<?, T, ?> consumer) {
     return connect2inRight(producer, consumer, defaultBackoff);
@@ -476,6 +494,19 @@ public final class Query {
   public synchronized <T> Query connect2inRight(
       StreamProducer<T> producer, Operator2In<?, T, ?> consumer, Backoff backoff) {
     Stream<T> stream = getStream(producer, consumer.secondInputView(), backoff);
+    producer.addOutput(stream);
+    consumer.addInput2(stream);
+    return this;
+  }
+
+  public synchronized <RT extends RichTuple> Query connect2inRightWithPriority(
+      StreamProducer<RT> producer, Operator2In<?, RT, ?> consumer) {
+    return connect2inRightWithPriority(producer, consumer, defaultBackoff);
+  }
+
+  public synchronized <RT extends RichTuple> Query connect2inRightWithPriority(
+      StreamProducer<RT> producer, Operator2In<?, RT, ?> consumer, Backoff backoff) {
+    Stream<RT> stream = getPriorityBasedStream(producer, consumer.secondInputView(), backoff);
     producer.addOutput(stream);
     consumer.addInput2(stream);
     return this;

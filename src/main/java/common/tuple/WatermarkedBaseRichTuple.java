@@ -1,36 +1,34 @@
 package common.tuple;
 
+/**
+ * This class needs to sit in Liebre for priority based stream support
+ */
 public class WatermarkedBaseRichTuple extends BaseRichTuple {
 
     public long endTimestamp;
-    public int key;
-    public int value;
+    public String key;
+    public String value;
     public long latency;
     public double throughput;
 
-    private final long timestamp;
-    private final boolean watermark;
+    protected final boolean watermark;
 
-    public WatermarkedBaseRichTuple(long timestamp, int key, int value) {
+    public WatermarkedBaseRichTuple(long timestamp, String key, String value) {
         this(timestamp, key, value, false);
     }
 
-    public WatermarkedBaseRichTuple(long timestamp, int key, int value, boolean watermark) {
+    public WatermarkedBaseRichTuple(long timestamp, String key, String value, boolean watermark) {
         super(System.currentTimeMillis(), timestamp, String.valueOf(key));
-        this.timestamp = timestamp;
         this.key = key;
         this.value = value;
         this.watermark = watermark;
     }
 
-    @Override
-    public long getTimestamp() {
-        return timestamp;
-    }
-
-    @Override
-    public String getKey() {
-        return String.valueOf(key);
+    public WatermarkedBaseRichTuple(long stimulus, long timestamp, String key, String value, boolean watermark) {
+        super(stimulus, timestamp, String.valueOf(key));
+        this.key = key;
+        this.value = value;
+        this.watermark = watermark;
     }
 
     public boolean isWatermark() {
@@ -41,8 +39,9 @@ public class WatermarkedBaseRichTuple extends BaseRichTuple {
     public String toString() {
         return timestamp +
             ", " + endTimestamp +
+            ", " + stimulus +
             ", " + key +
-            ", " + value +
+            ", " + value.replaceAll(",","|") +
             ", " + watermark +
             ", " + latency +
             ", " + String.format("%.3f", throughput);
