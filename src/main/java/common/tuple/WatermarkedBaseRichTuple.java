@@ -1,5 +1,9 @@
 package common.tuple;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
 /**
  * This class needs to sit in Liebre for priority based stream support
  */
@@ -10,6 +14,7 @@ public class WatermarkedBaseRichTuple extends BaseRichTuple {
     public String value;
     public long latency;
     public double throughput;
+    public Map<String, Long> timestampMap = new LinkedHashMap<>();
 
     protected final boolean watermark;
 

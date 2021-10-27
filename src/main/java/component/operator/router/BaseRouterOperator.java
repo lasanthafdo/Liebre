@@ -40,7 +40,7 @@ public class BaseRouterOperator<T> extends AbstractOperator<T, T> implements Rou
   }
 
   @Override
-  protected final void process() {
+  protected void process() {
     if (isFlushed()) {
       return;
     }
