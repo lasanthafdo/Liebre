@@ -9,6 +9,7 @@ import stream.Stream;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
@@ -31,10 +32,11 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   private final LongAdder tuplesWritten = new LongAdder();
   private final LongAdder tuplesRead = new LongAdder();
   private final AtomicLong processingTimeNanos = new AtomicLong(0);
-  private volatile long lastUpdateTime = System.currentTimeMillis();
-  private volatile long lastReplicaUpdateTime = System.currentTimeMillis();
+  private volatile long lastRateAndAlphaUpdateTime = System.currentTimeMillis();
+  private volatile long lastUpdateFromReplica = System.currentTimeMillis();
   private final AtomicReference<Double> selectivity = new AtomicReference<>(1D);
   private final Set<Integer> replicaSet = ConcurrentHashMap.newKeySet();
+  private final AtomicBoolean updateInProgress = new AtomicBoolean(false);
 
   private final AtomicReference<Double> cost = new AtomicReference<>(1D * MILLIS_TO_NANOS);
   private final AtomicReference<Double> rate = new AtomicReference<>(0D);
@@ -115,22 +117,26 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   }
 
   @Override
-  public synchronized void updateMetricsForReplica(int replicaIndex, long tuplesRead, long tuplesWritten, long processingTimeNanos) {
+  public void updateMetricsForReplica(int replicaIndex, long tuplesRead, long tuplesWritten, long processingTimeNanos) {
     if(replicaSet.contains(replicaIndex)) {
-      this.lastUpdateTime += (System.currentTimeMillis() - this.lastReplicaUpdateTime);
-      updateMetrics();
-      replicaSet.clear();
+      if(updateInProgress.compareAndSet(false, true)) {
+        updateMetrics();
+        replicaSet.clear();
+        updateInProgress.set(false);
+      }
+      while (updateInProgress.get()) {
+        Thread.yield();
+      }
     }
     replicaSet.add(replicaIndex);
     this.tuplesRead.add(tuplesRead);
     this.tuplesWritten.add(tuplesWritten);
     this.processingTimeNanos.set(Math.max(processingTimeNanos, this.processingTimeNanos.get()));
-    this.lastReplicaUpdateTime = System.currentTimeMillis();
+    this.lastUpdateFromReplica = System.currentTimeMillis();
   }
 
   private void updateRateAndAlpha() {
-    final long currentTime = System.currentTimeMillis();
-    final long updatePeriod = currentTime - lastUpdateTime;
+    final long updatePeriod = lastUpdateFromReplica - lastRateAndAlphaUpdateTime;
     if (updatePeriod == 0) {
       return;
     }
@@ -138,7 +144,7 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     this.alpha = Math.min(TARGET_ALPHA, TARGET_ALPHA * updatePeriod / TARGET_UPDATE_PERIOD);
     final double currentRate = (double) tuplesRead.longValue() / (MILLIS_TO_NANOS * updatePeriod);
     this.rate.set(movingAverage(currentRate, rate.get()));
-    this.lastUpdateTime = currentTime;
+    this.lastRateAndAlphaUpdateTime = lastUpdateFromReplica;
   }
 
   private double movingAverage(double newValue, double oldValue) {

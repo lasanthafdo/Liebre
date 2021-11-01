@@ -121,6 +121,7 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
 
   private void extractHighPriorityEvents() {
     stream.stream().filter(tuple -> tuple.getTimestamp() < lastWatermark).forEachOrdered(highPriorityStream::offer);
+    stream.removeIf(tuple -> tuple.getTimestamp() < lastWatermark);
   }
 
   @Override
