@@ -71,7 +71,7 @@ import java.util.*;
 public final class Query {
 
   private static final Logger LOGGER = LogManager.getLogger();
-  public static final int DEFAULT_STREAM_CAPACITY = 10000;
+  public static final int DEFAULT_STREAM_CAPACITY = 10_000_000;
   public static final int DEFAULT_SGSTREAM_MAX_LEVELS = 3;
   public static final String OPERATOR = "operator";
   public static final String SOURCE = "source";

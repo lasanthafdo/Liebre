@@ -23,20 +23,25 @@
 
 package stream;
 
+import common.tuple.BaseRichTuple;
 import common.tuple.RichTuple;
 import common.tuple.WatermarkedBaseRichTuple;
 import common.util.backoff.Backoff;
 import common.util.backoff.ExponentialBackoff;
 import common.util.backoff.InactiveBackoff;
+import component.Component;
 import component.StreamConsumer;
 import component.StreamProducer;
 import org.apache.commons.lang3.builder.ToStringBuilder;
 import scheduling.LiebreScheduler;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Queue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -62,11 +67,15 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
   private final AtomicLong tuplesWritten = new AtomicLong(0);
   private final AtomicLong highPriorityTuplesRead = new AtomicLong(0);
   private final AtomicLong highPriorityTuplesWritten = new AtomicLong(0);
-  private final LiebreScheduler scheduler;
+  private final LiebreScheduler<Component> scheduler;
 
   private int lastStreamSize = 0;
   private int lastHighPriorityStreamSize = 0;
-  private long lastWatermark;
+  private Long lastProcessedWatermarkTs = 0L;
+  private Long currentWatermarkTs = 0L;
+  private T currentWatermark;
+  private final BlockingQueue<T> pendingWatermarks = new PriorityBlockingQueue<>(1000, Comparator.comparingLong(
+      RichTuple::getTimestamp));
   private final double alpha = 0.5;
 
   /**
@@ -84,7 +93,7 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
       StreamProducer<T> source,
       StreamConsumer<T> destination,
       int capacity,
-      LiebreScheduler scheduler) {
+      LiebreScheduler<Component> scheduler) {
     super(id, index);
     this.capacity = capacity;
     this.source = source;
@@ -101,16 +110,30 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
   public final boolean offer(T tuple, int producerIndex) {
     if(tuple instanceof WatermarkedBaseRichTuple) {
       WatermarkedBaseRichTuple wbrTuple = (WatermarkedBaseRichTuple) tuple;
-      if(wbrTuple.isWatermark() && wbrTuple.getTimestamp() > lastWatermark) {
-        this.lastWatermark = wbrTuple.getTimestamp();
-        extractHighPriorityEvents();
-        scheduler.scheduleTasks();
-      }
-      if(wbrTuple.getTimestamp() <= lastWatermark) {
-        highPriorityStream.offer(tuple);
-        highPriorityTuplesWritten.incrementAndGet();
+      if(wbrTuple.getTimestamp() > lastProcessedWatermarkTs) {
+        if (wbrTuple.isWatermark()) { // is a watermark
+          if(wbrTuple.getTimestamp() > currentWatermarkTs) { // is a later watermark
+            if (currentWatermark != null) {
+              this.pendingWatermarks.add((T) wbrTuple);
+            } else {
+              currentWatermark = (T) wbrTuple;
+              currentWatermarkTs = wbrTuple.getTimestamp();
+              extractHighPriorityEvents();
+            }
+            scheduler.scheduleTasks();
+          } else {
+            // older watermark is ignored
+            return true;
+          }
+        } else if (wbrTuple.getTimestamp() <= currentWatermarkTs) {
+          highPriorityStream.offer(tuple);
+          highPriorityTuplesWritten.incrementAndGet();
+        } else {
+          stream.offer(tuple);
+        }
       } else {
-        stream.offer(tuple);
+        // else the tuple gets dropped
+        return true;
       }
     } else {
       stream.offer(tuple);
@@ -119,16 +142,32 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
     return true;
   }
 
+  private T processWatermark() {
+    // Weee! Watermark can be processed
+    lastProcessedWatermarkTs = currentWatermarkTs;
+    T processedWatermark = currentWatermark;
+    currentWatermark = pendingWatermarks.poll();
+    if(currentWatermark != null) {
+      currentWatermarkTs = currentWatermark.getTimestamp();
+      extractHighPriorityEvents();
+    }
+    return processedWatermark;
+  }
+
   private void extractHighPriorityEvents() {
-    stream.stream().filter(tuple -> tuple.getTimestamp() < lastWatermark).forEachOrdered(highPriorityStream::offer);
-    stream.removeIf(tuple -> tuple.getTimestamp() < lastWatermark);
+    stream.stream().filter(tuple -> tuple.getTimestamp() < currentWatermarkTs).forEachOrdered(highPriorityStream::offer);
+    stream.removeIf(tuple -> tuple.getTimestamp() < currentWatermarkTs);
   }
 
   @Override
   public T doGetNextTuple(int consumerIndex) {
     T tuple = highPriorityStream.poll();
     if(tuple == null) {
-      tuple = stream.poll();
+      if(currentWatermark != null) {
+        tuple = processWatermark();
+      } else {
+        tuple = stream.poll();
+      }
     } else {
       highPriorityTuplesRead.incrementAndGet();
     }
@@ -150,17 +189,19 @@ public class PriorityBasedStream<T extends RichTuple> extends AbstractStream<T> 
 
   @Override
   public final int size() {
-    int streamSize =
-        (int) Math.round(movingAverage(stream.size() + getHighPrioritySize(), lastStreamSize));
-    lastStreamSize = streamSize;
-    return streamSize;
+    return stream.size();
+//    int streamSize =
+//        (int) Math.round(movingAverage(stream.size() + getHighPrioritySize(), lastStreamSize));
+//    lastStreamSize = streamSize;
+//    return streamSize;
   }
 
   @Override
   public int getHighPrioritySize() {
-    int highPriorityStreamSize = (int) Math.round(movingAverage(highPriorityStream.size(), lastHighPriorityStreamSize));
-    lastHighPriorityStreamSize = highPriorityStreamSize;
-    return highPriorityStreamSize;
+    return highPriorityStream.size();
+//    int highPriorityStreamSize = (int) Math.round(movingAverage(highPriorityStream.size(), lastHighPriorityStreamSize));
+//    lastHighPriorityStreamSize = highPriorityStreamSize;
+//    return highPriorityStreamSize;
   }
 
   @Override
