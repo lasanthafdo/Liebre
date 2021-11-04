@@ -198,7 +198,6 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     return state.getId();
   }
 
-
   public int getIndex() {
     return state.getIndex();
   }
@@ -240,4 +239,7 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     return processingTimeNanos.longValue();
   }
 
+  public ComponentState<IN, OUT> getState() {
+    return state;
+  }
 }

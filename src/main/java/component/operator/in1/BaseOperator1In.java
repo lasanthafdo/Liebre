@@ -62,7 +62,7 @@ public abstract class BaseOperator1In<IN, OUT> extends AbstractOperator<IN, OUT>
       flush();
       return;
     }
-
+    //TODO Add instrumentation
     if (inTuple != null) {
       increaseTuplesRead();
       List<OUT> outTuples = processTupleIn1(inTuple);
