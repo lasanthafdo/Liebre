@@ -69,7 +69,6 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
     private final LiebreScheduler<Component> scheduler;
 
     private int lastStreamSize = 0;
-    private int lastHighPriorityStreamSize = 0;
     private Long lastProcessedWatermarkTs = 0L;
     private Long currentWatermarkTs = 0L;
     private final AtomicReference<WatermarkedBaseRichTuple> currentWatermarkRef = new AtomicReference<>();
@@ -125,11 +124,12 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
             if (tuple.getTimestamp() > lastProcessedWatermarkTs) {
                 if (tuple.isWatermark()) { // is a watermark
                     if (tuple.getTimestamp() > currentWatermarkTs) { // is a later watermark
-                        if (currentWatermarkRef.get() != null) {
+                        if (currentWatermark != null) {
                             this.pendingWatermarks.add(tuple);
                         } else {
-                            currentWatermarkRef.set(tuple);
-                            currentWatermarkTs = tuple.getTimestamp();
+                            currentWatermark = tuple;
+                            currentWatermarkRef.set(currentWatermark);
+                            currentWatermarkTs = currentWatermark.getTimestamp();
                             extractHighPriorityEvents();
                         }
                         scheduler.scheduleTasks();
@@ -159,10 +159,10 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
         if (highPriorityStream.isEmpty()) {
             // Weee! Watermark can be processed
             lastProcessedWatermarkTs = currentWatermarkTs;
-            processedWatermark = (T) currentWatermarkRef.get();
+            processedWatermark = (T) currentWatermark;
             currentWatermark = pendingWatermarks.poll();
             if (currentWatermark != null) {
-                currentWatermarkTs = currentWatermarkRef.get().getTimestamp();
+                currentWatermarkTs = currentWatermark.getTimestamp();
                 extractHighPriorityEvents();
             }
         }
@@ -197,9 +197,10 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
             Set<WatermarkedBaseRichTuple> tupleIdSet = outgoingEventHistory.computeIfAbsent(destination.getId(),
                 operatorId -> new ConcurrentSkipListSet<>(Comparator.comparing(WatermarkedBaseRichTuple::getTupleId)));
             if (!tupleIdSet.add(tuple)) {
+//                T finalTuple = tuple;
 //                WatermarkedBaseRichTuple dupeTuple =
 //                    tupleIdSet.stream()
-//                        .filter(tupleInSet -> tupleInSet.getTupleId().equals(tupleToBeAdded.getTupleId()))
+//                        .filter(tupleInSet -> tupleInSet.getTupleId().equals(finalTuple.getTupleId()))
 //                        .findFirst().orElse(null);
 //                List<String> tupleIdList =
 //                    highPriorityStream.stream().map(WatermarkedBaseRichTuple::getTupleId)
@@ -207,7 +208,7 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
 //                            Collectors.toList());
 //                List<String> distinctTupleIdList = tupleIdList.stream().distinct().collect(Collectors.toList());
                 throw new IllegalStateException(
-                    "Same tuple with ID " + tuple.getTupleId() + " is being extracted by the same stream");
+                    "Same output tuple with ID " + tuple.getTupleId() + " is being extracted by the same stream");
             }
         }
         return tuple;
@@ -233,10 +234,7 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
 
     @Override
     public int getHighPrioritySize() {
-        int highPriorityStreamSize =
-            (int) Math.round(movingAverage(highPriorityStream.size(), lastHighPriorityStreamSize));
-        lastHighPriorityStreamSize = highPriorityStreamSize;
-        return highPriorityStreamSize;
+        return highPriorityStream.size();
     }
 
     @Override
