@@ -24,6 +24,7 @@
 package query;
 
 import common.tuple.RichTuple;
+import common.tuple.WatermarkedBaseRichTuple;
 import common.util.Util;
 import common.util.backoff.Backoff;
 import common.util.backoff.ExponentialBackoff;
@@ -399,17 +400,17 @@ public final class Query {
     return this;
   }
 
-  public synchronized <RT extends RichTuple> Query connectWithPriority(StreamProducer<RT> producer, StreamConsumer<RT> consumer) {
+  public synchronized <WT extends WatermarkedBaseRichTuple> Query connectWithPriority(StreamProducer<WT> producer, StreamConsumer<WT> consumer) {
     return connectWithPriority(producer, consumer, defaultBackoff);
   }
 
-  public synchronized <RT extends RichTuple> Query connectWithPriority(
-      StreamProducer<RT> producer, StreamConsumer<RT> consumer, Backoff backoff) {
+  public synchronized <WT extends WatermarkedBaseRichTuple> Query connectWithPriority(
+      StreamProducer<WT> producer, StreamConsumer<WT> consumer, Backoff backoff) {
     Validate.isTrue(
         consumer instanceof Operator2In == false,
         "Error when connecting '%s': Please use connect2inXX() for Operator2In and subclasses!",
         consumer.getId());
-    Stream<RT> stream = getPriorityBasedStream(producer, consumer, backoff);
+    Stream<WT> stream = getPriorityBasedStream(producer, consumer, backoff);
     producer.addOutput(stream);
     consumer.addInput(stream);
     return this;
@@ -473,14 +474,14 @@ public final class Query {
     return this;
   }
 
-  public synchronized <RT extends RichTuple> Query connect2inLeftWithPriority(
-      StreamProducer<RT> producer, Operator2In<RT, ?, ?> consumer) {
+  public synchronized <WT extends WatermarkedBaseRichTuple> Query connect2inLeftWithPriority(
+      StreamProducer<WT> producer, Operator2In<WT, ?, ?> consumer) {
     return connect2inLeftWithPriority(producer, consumer, defaultBackoff);
   }
 
-  public synchronized <RT extends RichTuple> Query connect2inLeftWithPriority(
-      StreamProducer<RT> producer, Operator2In<RT, ?, ?> consumer, Backoff backoff) {
-    Stream<RT> stream = getPriorityBasedStream(producer, consumer, backoff);
+  public synchronized <WT extends WatermarkedBaseRichTuple> Query connect2inLeftWithPriority(
+      StreamProducer<WT> producer, Operator2In<WT, ?, ?> consumer, Backoff backoff) {
+    Stream<WT> stream = getPriorityBasedStream(producer, consumer, backoff);
     producer.addOutput(stream);
     consumer.addInput(stream);
     return this;
@@ -499,14 +500,14 @@ public final class Query {
     return this;
   }
 
-  public synchronized <RT extends RichTuple> Query connect2inRightWithPriority(
-      StreamProducer<RT> producer, Operator2In<?, RT, ?> consumer) {
+  public synchronized <WT extends WatermarkedBaseRichTuple> Query connect2inRightWithPriority(
+      StreamProducer<WT> producer, Operator2In<?, WT, ?> consumer) {
     return connect2inRightWithPriority(producer, consumer, defaultBackoff);
   }
 
-  public synchronized <RT extends RichTuple> Query connect2inRightWithPriority(
-      StreamProducer<RT> producer, Operator2In<?, RT, ?> consumer, Backoff backoff) {
-    Stream<RT> stream = getPriorityBasedStream(producer, consumer.secondInputView(), backoff);
+  public synchronized <WT extends WatermarkedBaseRichTuple> Query connect2inRightWithPriority(
+      StreamProducer<WT> producer, Operator2In<?, WT, ?> consumer, Backoff backoff) {
+    Stream<WT> stream = getPriorityBasedStream(producer, consumer.secondInputView(), backoff);
     producer.addOutput(stream);
     consumer.addInput2(stream);
     return this;
@@ -519,9 +520,9 @@ public final class Query {
     return stream;
   }
 
-  private synchronized <RT extends RichTuple> Stream<RT> getPriorityBasedStream(
-      StreamProducer<RT> producer, StreamConsumer<RT> consumer, Backoff backoff) {
-    Stream<RT> stream =
+  private synchronized <WT extends WatermarkedBaseRichTuple> Stream<WT> getPriorityBasedStream(
+      StreamProducer<WT> producer, StreamConsumer<WT> consumer, Backoff backoff) {
+    Stream<WT> stream =
         streamFactory.newPriorityBasedStream(producer, consumer, DEFAULT_STREAM_CAPACITY, backoff);
     return stream;
   }

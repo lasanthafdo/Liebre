@@ -23,9 +23,14 @@
 
 package component.operator.in1;
 
+import common.tuple.WatermarkedBaseRichTuple;
 import component.ComponentType;
 import component.operator.AbstractOperator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+
 import stream.Stream;
 
 /**
@@ -38,6 +43,8 @@ import stream.Stream;
 public abstract class BaseOperator1In<IN, OUT> extends AbstractOperator<IN, OUT>
     implements Operator1In<IN, OUT> {
 
+  private static final Map<String, Set<String>> eventHistory = new ConcurrentHashMap<>();
+  private final String operatorId;
   /**
    * Construct.
    *
@@ -45,6 +52,11 @@ public abstract class BaseOperator1In<IN, OUT> extends AbstractOperator<IN, OUT>
    */
   public BaseOperator1In(String id) {
     super(id, ComponentType.OPERATOR);
+    if(id.contains("_")) {
+      this.operatorId = "#" + id.split("_")[0];
+    } else {
+      this.operatorId = id;
+    }
   }
 
   @Override
@@ -64,6 +76,12 @@ public abstract class BaseOperator1In<IN, OUT> extends AbstractOperator<IN, OUT>
     }
     //TODO Add instrumentation
     if (inTuple != null) {
+      if (inTuple instanceof WatermarkedBaseRichTuple) {
+        Set<String> tupleIdSet = eventHistory.computeIfAbsent(operatorId, operatorId -> ConcurrentHashMap.newKeySet());
+        if (!tupleIdSet.add(((WatermarkedBaseRichTuple) inTuple).getTupleId())) {
+          throw new IllegalStateException("Same tuple is being processed by different replicas");
+        }
+      }
       increaseTuplesRead();
       List<OUT> outTuples = processTupleIn1(inTuple);
       if (outTuples != null) {

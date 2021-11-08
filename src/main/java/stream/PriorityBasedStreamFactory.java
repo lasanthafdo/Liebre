@@ -1,8 +1,7 @@
 package stream;
 
-import common.tuple.RichTuple;
+import common.tuple.WatermarkedBaseRichTuple;
 import common.util.backoff.Backoff;
-import component.Component;
 import component.StreamConsumer;
 import component.StreamProducer;
 import scheduling.LiebreScheduler;
@@ -27,9 +26,9 @@ public class PriorityBasedStreamFactory implements StreamFactory {
 	}
 
 	@Override
-	public <RT extends RichTuple> Stream<RT> newPriorityBasedStream(StreamProducer<RT> from,
-																	StreamConsumer<RT> to,
-																	int capacity, Backoff backoff) {
+	public <WT extends WatermarkedBaseRichTuple> Stream<WT> newPriorityBasedStream(StreamProducer<WT> from,
+																				   StreamConsumer<WT> to,
+																				   int capacity, Backoff backoff) {
 		return new PriorityBasedStream<>(
 			getStreamId(from, to), indexes.getAndIncrement(), from, to, capacity, scheduler);
 	}

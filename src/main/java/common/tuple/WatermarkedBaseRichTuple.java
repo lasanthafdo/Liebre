@@ -19,6 +19,7 @@ public class WatermarkedBaseRichTuple extends BaseRichTuple {
     private BlockingQueue<ImmutableTriple<String, String, Long>> timestampMap;
 
     protected final boolean watermark;
+
     private final UUID tupleId = UUID.randomUUID();
 
     public WatermarkedBaseRichTuple(long timestamp, String key, String value) {
@@ -59,6 +60,10 @@ public class WatermarkedBaseRichTuple extends BaseRichTuple {
 
     public boolean isWatermark() {
         return watermark;
+    }
+
+    public String getTupleId() {
+        return tupleId.toString();
     }
 
     @Override
