@@ -12,7 +12,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.LongAdder;
 
 public abstract class AbstractComponent<IN, OUT> implements Component {
 
@@ -29,11 +28,11 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   private static final long MILLIS_TO_NANOS = 1_000_000;
   // The actual alpha that we use, changing depending on the actual update period length
   private volatile double alpha = 0.4;
-  private final LongAdder tuplesWritten = new LongAdder();
-  private final LongAdder tuplesRead = new LongAdder();
+  private final AtomicLong tuplesWritten = new AtomicLong(0);
+  private final AtomicLong tuplesRead = new AtomicLong(0);
   private final AtomicLong processingTimeNanos = new AtomicLong(0);
-  private volatile long lastRateAndAlphaUpdateTime = System.currentTimeMillis();
-  private volatile long lastUpdateFromReplica = System.currentTimeMillis();
+  private transient volatile long lastRateAndAlphaUpdateTime = System.currentTimeMillis();
+  private transient volatile long lastUpdateFromReplica = System.currentTimeMillis();
   private final AtomicReference<Double> selectivity = new AtomicReference<>(1D);
   private final Set<Integer> replicaSet = ConcurrentHashMap.newKeySet();
   private final AtomicBoolean updateInProgress = new AtomicBoolean(false);
@@ -43,7 +42,7 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
 
   private final TimeMetric executionTimeMetric;
   private final Metric rateMetric;
-  private boolean flushed;
+  private transient boolean flushed;
 
   public AbstractComponent(String id, ComponentType type) {
     this.state = new ComponentState<>(id, type);
@@ -82,12 +81,12 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
   protected abstract void process();
 
   protected final void increaseTuplesRead() {
-    tuplesRead.increment();
+    tuplesRead.incrementAndGet();
     rateMetric.record(1);
   }
 
   protected final void increaseTuplesWritten() {
-    tuplesWritten.increment();
+    tuplesWritten.incrementAndGet();
   }
 
   /**
@@ -111,8 +110,8 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     final double currentCost = processingTimeNanos.longValue() / (double) tuplesRead.longValue();
     this.selectivity.set(movingAverage(currentSelectivity, selectivity.get()));
     this.cost.set(movingAverage(currentCost, cost.get()));
-    this.tuplesRead.reset();
-    this.tuplesWritten.reset();
+    this.tuplesRead.set(0);
+    this.tuplesWritten.set(0);
     this.processingTimeNanos.set(0);
   }
 
@@ -129,8 +128,8 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
       }
     }
     replicaSet.add(replicaIndex);
-    this.tuplesRead.add(tuplesRead);
-    this.tuplesWritten.add(tuplesWritten);
+    this.tuplesRead.addAndGet(tuplesRead);
+    this.tuplesWritten.addAndGet(tuplesWritten);
     this.processingTimeNanos.set(Math.max(processingTimeNanos, this.processingTimeNanos.get()));
     this.lastUpdateFromReplica = System.currentTimeMillis();
   }
@@ -182,6 +181,13 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
     executionTimeMetric.enable();
     rateMetric.enable();
     state.enable();
+    tuplesRead.set(0);
+    tuplesWritten.set(0);
+    processingTimeNanos.set(0);
+    selectivity.set(1D);
+    cost.set(1D);
+    rate.set(0D);
+    replicaSet.clear();
   }
 
   public void disable() {
@@ -226,17 +232,17 @@ public abstract class AbstractComponent<IN, OUT> implements Component {
 
   @Override
   public long getTuplesRead() {
-    return tuplesRead.longValue();
+    return tuplesRead.get();
   }
 
   @Override
   public long getTuplesWritten() {
-    return tuplesWritten.longValue();
+    return tuplesWritten.get();
   }
 
   @Override
   public long getProcessingTimeNanos() {
-    return processingTimeNanos.longValue();
+    return processingTimeNanos.get();
   }
 
   public ComponentState<IN, OUT> getState() {
