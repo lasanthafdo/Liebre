@@ -420,12 +420,12 @@ public final class Query {
           StreamProducer<T> producer, List<? extends StreamConsumer<T>> consumers) {
 
     // Generate id based on producer and consumers
-    String id = producer.getId();
+    StringBuilder id = new StringBuilder(producer.getId());
     for (StreamConsumer<T> cons : consumers) {
-      id += "_" + cons.getId();
+      id.append("_").append(cons.getId());
     }
     // Add a router with unique id
-    RouterOperator<T> router = new HashBasedRouterOperator<T>(id);
+    RouterOperator<T> router = new HashBasedRouterOperator<T>(id.toString());
     saveComponent(operators, router, OPERATOR);
 
     // Now connect everything
