@@ -1,6 +1,7 @@
 package common.tuple;
 
 import org.apache.commons.lang3.tuple.ImmutableTriple;
+import stream.WMStreamProcessingContext;
 
 import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
@@ -20,7 +21,7 @@ public class WatermarkedBaseRichTuple extends BaseRichTuple {
 
     protected final boolean watermark;
 
-    private final UUID tupleId = UUID.randomUUID();
+    private final UUID tupleId;
 
     public WatermarkedBaseRichTuple(long timestamp, String key, String value) {
         this(timestamp, key, value, false);
@@ -35,18 +36,26 @@ public class WatermarkedBaseRichTuple extends BaseRichTuple {
         this.key = key;
         this.value = value;
         this.watermark = watermark;
-        if (watermark) {
-            this.timestampMap = new LinkedBlockingQueue<>();
+        if (WMStreamProcessingContext.getContext().getDebugLevel() >= WMStreamProcessingContext.DEBUG_LEVEL_BASIC) {
+            this.tupleId = UUID.randomUUID();
+            if (WMStreamProcessingContext.getContext().getDebugLevel() >=
+                WMStreamProcessingContext.DEBUG_LEVEL_MODERATE &&
+                watermark) {
+                this.timestampMap = new LinkedBlockingQueue<>();
+            }
+        } else {
+            this.tupleId = null;
         }
     }
 
     public boolean addTimestampMarker(String operatorId, Long timestamp) {
-        if (this.watermark) {
+        if (WMStreamProcessingContext.getContext().getDebugLevel() >= WMStreamProcessingContext.DEBUG_LEVEL_MODERATE &&
+            this.watermark) {
             if (this.timestampMap.stream().anyMatch(tsMarker -> tsMarker.getMiddle().equals(operatorId))) {
                 return false;
             } else {
                 this.timestampMap.add(
-                    new ImmutableTriple<>(Thread.currentThread().getName() + ":" + tupleId, operatorId,
+                    new ImmutableTriple<>(Thread.currentThread().getName(), operatorId,
                         timestamp));
                 return true;
             }

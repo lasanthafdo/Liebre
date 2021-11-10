@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import stream.Stream;
+import stream.WMStreamProcessingContext;
 
 /**
  * Default abstract implementation of {@link Operator1In}.
@@ -74,9 +75,8 @@ public abstract class BaseOperator1In<IN, OUT> extends AbstractOperator<IN, OUT>
       flush();
       return;
     }
-    //TODO Add instrumentation
     if (inTuple != null) {
-      if (inTuple instanceof WatermarkedBaseRichTuple) {
+      if (WMStreamProcessingContext.getContext().getDebugLevel() >= WMStreamProcessingContext.DEBUG_LEVEL_FULL && inTuple instanceof WatermarkedBaseRichTuple) {
         Set<String> tupleIdSet = eventHistory.computeIfAbsent(operatorId, operatorId -> ConcurrentHashMap.newKeySet());
         if (!tupleIdSet.add(((WatermarkedBaseRichTuple) inTuple).getTupleId())) {
           throw new IllegalStateException("Same tuple is being processed by different replicas");

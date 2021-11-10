@@ -76,12 +76,13 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
     private static WatermarkedBaseRichTuple globalCurrentWatermark;
     private static Long globalWatermarkTs = 0L;
     private static Long lastGlobalWatermarkTs = 0L;
+    private static final AtomicReference<WatermarkedBaseRichTuple> globalWatermarkRef = new AtomicReference<>();
 
-    private final BlockingQueue<WatermarkedBaseRichTuple> pendingWatermarks =
-        new PriorityBlockingQueue<>(1000, Comparator.comparingLong(
-            RichTuple::getTimestamp));
-    private final AtomicReference<WatermarkedBaseRichTuple> currentWatermarkRef = new AtomicReference<>();
-    private WatermarkedBaseRichTuple currentWatermark;
+//    private final BlockingQueue<WatermarkedBaseRichTuple> pendingWatermarks =
+//        new PriorityBlockingQueue<>(1000, Comparator.comparingLong(
+//            RichTuple::getTimestamp));
+//    private final AtomicReference<WatermarkedBaseRichTuple> currentWatermarkRef = new AtomicReference<>();
+//    private WatermarkedBaseRichTuple currentWatermark;
 
     private int lastStreamSize = 0;
 
@@ -122,31 +123,23 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
         if (tuple == null) {
             return false;
         } else {
-            Set<WatermarkedBaseRichTuple> tupleIdSet = incomingEventHistory.computeIfAbsent(source.getId(),
-                operatorId -> new ConcurrentSkipListSet<>(Comparator.comparing(WatermarkedBaseRichTuple::getTupleId)));
-            if (!tupleIdSet.add(tuple)) {
-                throw new IllegalStateException(
-                    "Same input tuple with " + tuple.getTupleId() + " is being put to the same stream");
+            if (WMStreamProcessingContext.getContext().getDebugLevel() >= WMStreamProcessingContext.DEBUG_LEVEL_FULL) {
+                Set<WatermarkedBaseRichTuple> tupleIdSet = incomingEventHistory.computeIfAbsent(source.getId(),
+                    operatorId -> new ConcurrentSkipListSet<>(
+                        Comparator.comparing(WatermarkedBaseRichTuple::getTupleId)));
+                if (!tupleIdSet.add(tuple)) {
+                    throw new IllegalStateException(
+                        "Same input tuple with " + tuple.getTupleId() + " is being put to the same stream");
+                }
             }
-
             if (tuple.getTimestamp() > lastGlobalWatermarkTs) {
                 if (tuple.isWatermark()) { // is a watermark
-                    if (tuple.getTimestamp() > globalWatermarkTs) { // is a later watermark
-                        if (source instanceof Source) {
-                            processGlobalWatermarkArrival(tuple);
-                            scheduler.scheduleTasks();
-                        }
-                        if (currentWatermark != null) {
-                            pendingWatermarks.add(tuple);
-                        } else {
-                            currentWatermark = tuple;
-                            currentWatermarkRef.set(currentWatermark);
-                        }
-                    } else {
-                        // older or same watermark is ignored
-                        return true;
+                    if (tuple.getTimestamp() > globalWatermarkTs && source instanceof Source) { // is a later watermark
+                        processGlobalWatermarkArrival(tuple);
+                        scheduler.scheduleTasks();
                     }
-                } else if (tuple.getTimestamp() <= globalWatermarkTs) {
+                }
+                if (tuple.getTimestamp() <= globalWatermarkTs) {
                     highPriorityStream.offer(tuple);
                     highPriorityTuplesWritten.incrementAndGet();
                 } else {
@@ -165,29 +158,24 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
         if (globalCurrentWatermark != null) {
             globalPendingWatermarks.add(tuple);
         } else {
+            WMStreamProcessingContext.getContext().processWatermarkArrival(tuple.getTimestamp());
             globalCurrentWatermark = tuple;
             globalWatermarkTs = globalCurrentWatermark.getTimestamp();
-            WMStreamProcessingContext.getContext().processWatermarkArrival(globalWatermarkTs);
+            globalWatermarkRef.set(globalCurrentWatermark);
         }
     }
 
-    private T processWatermark() {
-        T processedWatermark = null;
-        if (highPriorityStream.isEmpty()) {
+    private void processWatermark() {
+        if (WMStreamProcessingContext.getContext().areAllHighPriorityStreamsEmpty()) {
             // Weee! Watermark can be processed
-            processedWatermark = (T) currentWatermark;
-            currentWatermark = pendingWatermarks.poll();
-            if (destination instanceof Sink) {
-                lastGlobalWatermarkTs = globalWatermarkTs;
-                globalCurrentWatermark = globalPendingWatermarks.poll();
-                if (globalCurrentWatermark != null) {
-                    globalWatermarkTs = globalCurrentWatermark.getTimestamp();
-                    WMStreamProcessingContext.getContext().processWatermarkArrival(globalWatermarkTs);
-                }
+            lastGlobalWatermarkTs = globalWatermarkTs;
+            globalCurrentWatermark = globalPendingWatermarks.poll();
+            if (globalCurrentWatermark != null) {
+                globalWatermarkTs = globalCurrentWatermark.getTimestamp();
+                WMStreamProcessingContext.getContext().processWatermarkArrival(globalWatermarkTs);
             }
         }
-        currentWatermarkRef.set(currentWatermark);
-        return processedWatermark;
+        globalWatermarkRef.set(globalCurrentWatermark);
     }
 
     public synchronized void extractHighPriorityEvents(Long watermarkTimestamp) {
@@ -200,21 +188,20 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
     public T doGetNextTuple(int consumerIndex) {
         T tuple = highPriorityStream.poll();
         if (tuple == null) {
-            if (currentWatermark != null) {
-                if (currentWatermarkRef.compareAndSet(currentWatermark, BEING_PROCESSED_MARKER)) {
-                    tuple = processWatermark();
-                    assert !currentWatermark.equals(BEING_PROCESSED_MARKER);
-                } // Otherwise, tuple is already set to null
-            } else {
-                tuple = stream.poll();
+            if (globalCurrentWatermark != null && destination instanceof Sink) {
+                if (globalWatermarkRef.compareAndSet(globalCurrentWatermark, BEING_PROCESSED_MARKER)) {
+                    processWatermark();
+                }
             }
+            tuple = stream.poll();
         } else {
             highPriorityTuplesRead.incrementAndGet();
         }
         if (tuple != null) {
             tuplesRead.incrementAndGet();
         }
-        if (tuple != null) {
+        if (WMStreamProcessingContext.getContext().getDebugLevel() >= WMStreamProcessingContext.DEBUG_LEVEL_FULL &&
+            tuple != null) {
             Set<WatermarkedBaseRichTuple> tupleIdSet = outgoingEventHistory.computeIfAbsent(destination.getId(),
                 operatorId -> new ConcurrentSkipListSet<>(Comparator.comparing(WatermarkedBaseRichTuple::getTupleId)));
             if (!tupleIdSet.add(tuple)) {
