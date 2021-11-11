@@ -17,7 +17,6 @@ public class WMStreamProcessingContext {
     private static WMStreamProcessingContext wmStreamProcessingContext = null;
 
     private int debugLevel;
-
     private final Map<String, PriorityBasedStream<? extends WatermarkedBaseRichTuple>> streamIdObjMap =
         new ConcurrentHashMap<>();
 
@@ -59,7 +58,6 @@ public class WMStreamProcessingContext {
     }
 
     public boolean areAllHighPriorityStreamsEmpty() {
-        return streamIdObjMap.values().stream()
-            .allMatch(priorityBasedStream -> priorityBasedStream.getHighPrioritySize() == 0);
+        return streamIdObjMap.values().stream().noneMatch(PriorityBasedStream::isStreamPrioritized);
     }
 }

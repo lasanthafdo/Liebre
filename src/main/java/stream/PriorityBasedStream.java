@@ -38,6 +38,7 @@ import scheduling.LiebreScheduler;
 
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -57,19 +58,6 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
     private static final WatermarkedBaseRichTuple
         BEING_PROCESSED_MARKER = new WatermarkedBaseRichTuple(0L, "MARKER", "MARKER", true);
 
-    private final Queue<T> stream = new ConcurrentLinkedQueue<>();
-    private final Queue<T> highPriorityStream = new ConcurrentLinkedQueue<>();
-    private final int capacity;
-    private final StreamProducer<T> source;
-    private final StreamConsumer<T> destination;
-    private volatile boolean isFlushed = false;
-    private volatile double averageArrivalTime = -1;
-    private final AtomicLong tuplesRead = new AtomicLong(0);
-    private final AtomicLong tuplesWritten = new AtomicLong(0);
-    private final AtomicLong highPriorityTuplesRead = new AtomicLong(0);
-    private final AtomicLong highPriorityTuplesWritten = new AtomicLong(0);
-    private final LiebreScheduler<? extends Component> scheduler;
-
     private static final BlockingQueue<WatermarkedBaseRichTuple> globalPendingWatermarks =
         new PriorityBlockingQueue<>(1000, Comparator.comparingLong(
             RichTuple::getTimestamp));
@@ -77,17 +65,23 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
     private static Long globalWatermarkTs = 0L;
     private static Long lastGlobalWatermarkTs = 0L;
     private static final AtomicReference<WatermarkedBaseRichTuple> globalWatermarkRef = new AtomicReference<>();
-
-//    private final BlockingQueue<WatermarkedBaseRichTuple> pendingWatermarks =
-//        new PriorityBlockingQueue<>(1000, Comparator.comparingLong(
-//            RichTuple::getTimestamp));
-//    private final AtomicReference<WatermarkedBaseRichTuple> currentWatermarkRef = new AtomicReference<>();
-//    private WatermarkedBaseRichTuple currentWatermark;
-
-    private int lastStreamSize = 0;
-
     private static final Map<String, Set<WatermarkedBaseRichTuple>> incomingEventHistory = new ConcurrentHashMap<>();
     private static final Map<String, Set<WatermarkedBaseRichTuple>> outgoingEventHistory = new ConcurrentHashMap<>();
+
+    private final Queue<T> stream = new ConcurrentLinkedQueue<>();
+    private final Queue<T> highPriorityStream = new ConcurrentLinkedQueue<>();
+    private final int capacity;
+    private final StreamProducer<T> source;
+    private final StreamConsumer<T> destination;
+    private final AtomicLong tuplesRead = new AtomicLong(0);
+    private final AtomicLong tuplesWritten = new AtomicLong(0);
+    private final AtomicLong highPriorityTuplesRead = new AtomicLong(0);
+    private final AtomicLong highPriorityTuplesWritten = new AtomicLong(0);
+    private final AtomicBoolean streamPrioritized = new AtomicBoolean(false);
+    private final LiebreScheduler<? extends Component> scheduler;
+
+    private volatile boolean isFlushed = false;
+    private volatile double averageArrivalTime = -1;
 
     /**
      * Construct.
@@ -182,17 +176,19 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
         stream.stream().filter(tuple -> tuple.getTimestamp() < watermarkTimestamp)
             .forEachOrdered(highPriorityStream::offer);
         stream.removeIf(tuple -> tuple.getTimestamp() < watermarkTimestamp);
+        streamPrioritized.set(true);
     }
 
     @Override
     public T doGetNextTuple(int consumerIndex) {
         T tuple = highPriorityStream.poll();
         if (tuple == null) {
-            if (globalCurrentWatermark != null && destination instanceof Sink) {
-                if (globalWatermarkRef.compareAndSet(globalCurrentWatermark, BEING_PROCESSED_MARKER)) {
-                    processWatermark();
-                }
+            streamPrioritized.compareAndSet(true, false);
+            if (globalCurrentWatermark != null && (destination instanceof Sink) &&
+                globalWatermarkRef.compareAndSet(globalCurrentWatermark, BEING_PROCESSED_MARKER)) {
+                processWatermark();
             }
+            //TODO What if a tuple gets polled while it is being added to HP?
             tuple = stream.poll();
         } else {
             highPriorityTuplesRead.incrementAndGet();
@@ -224,10 +220,7 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
 
     @Override
     public final int size() {
-        int streamSize =
-            (int) Math.round(movingAverage(stream.size() + getHighPrioritySize(), lastStreamSize));
-        lastStreamSize = streamSize;
-        return streamSize;
+        return stream.size();
     }
 
     @Override
@@ -288,7 +281,7 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
             .toString();
     }
 
-    private double movingAverage(double newValue, double oldValue) {
-        return (MOVING_AVG_ALPHA * newValue) + ((1 - MOVING_AVG_ALPHA) * oldValue);
+    public boolean isStreamPrioritized() {
+        return streamPrioritized.get();
     }
 }
