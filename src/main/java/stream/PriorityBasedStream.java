@@ -181,11 +181,15 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
         T tuple = highPriorityStream.poll();
         if (tuple == null) {
             streamPrioritized.compareAndSet(true, false);
-            if (globalCurrentWatermark != null && (destination instanceof Sink) &&
-                globalWatermarkRef.compareAndSet(globalCurrentWatermark, BEING_PROCESSED_MARKER)) {
-                processWatermark();
+            if (globalCurrentWatermark != null && (destination instanceof Sink)) {
+                if (globalWatermarkRef.compareAndSet(globalCurrentWatermark, BEING_PROCESSED_MARKER)) {
+                    processWatermark();
+                } else {
+                    while (BEING_PROCESSED_MARKER.equals(globalCurrentWatermark)) {
+                        Thread.yield();
+                    }
+                }
             }
-            //TODO What if a tuple gets polled while it is being added to HP?
             tuple = stream.poll();
         } else {
             highPriorityTuplesRead.incrementAndGet();
