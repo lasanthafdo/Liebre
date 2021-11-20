@@ -124,22 +124,16 @@ public class PriorityBasedStream<T extends WatermarkedBaseRichTuple> extends Abs
                         "Same input tuple with " + tuple.getTupleId() + " is being put to the same stream");
                 }
             }
-            if ((source instanceof Source) && tuple.getTimestamp() < globalWatermarkTs) {
-                // tuple gets dropped
-                return true;
+            if (tuple.isWatermark() && tuple.getTimestamp() > globalWatermarkTs &&
+                source instanceof Source) { // is a later watermark
+                processGlobalWatermarkArrival(tuple);
+                scheduler.scheduleTasks();
+            }
+            if (tuple.getTimestamp() <= globalWatermarkTs) {
+                highPriorityStream.offer(tuple);
+                highPriorityTuplesWritten.incrementAndGet();
             } else {
-                if (tuple.isWatermark()) { // is a watermark
-                    if (tuple.getTimestamp() > globalWatermarkTs && source instanceof Source) { // is a later watermark
-                        processGlobalWatermarkArrival(tuple);
-                        scheduler.scheduleTasks();
-                    }
-                }
-                if (tuple.getTimestamp() <= globalWatermarkTs) {
-                    highPriorityStream.offer(tuple);
-                    highPriorityTuplesWritten.incrementAndGet();
-                } else {
-                    stream.offer(tuple);
-                }
+                stream.offer(tuple);
             }
         }
         tuplesWritten.incrementAndGet();
